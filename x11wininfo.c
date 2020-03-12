@@ -4,6 +4,7 @@
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_atom.h>
+#include <xcb/xproto.h>
 
 
 void die(char *message) {
@@ -27,17 +28,35 @@ xcb_window_t get_focused_window(xcb_connection_t *conn) {
 }
 
 
-char *get_window_property(xcb_connection_t *conn, xcb_window_t window, xcb_atom_enum_t property) {
+xcb_atom_t get_atom(xcb_connection_t *conn, char *name) {
+    xcb_atom_t atom;
+    xcb_intern_atom_cookie_t cookie;
+    xcb_intern_atom_reply_t *reply;
+    cookie = xcb_intern_atom(conn, 0, strlen(name), name);
+    reply = xcb_intern_atom_reply(conn, cookie, NULL);
+    if (!reply) {
+        return 0;
+    }
+    atom = reply->atom;
+    free(reply);
+    return atom;
+}
+
+
+char *get_window_property(xcb_connection_t *conn, xcb_window_t window, xcb_atom_t atom) {
     xcb_get_property_cookie_t cookie;
     xcb_get_property_reply_t *reply;
-    cookie = xcb_get_property(conn, 0, window, property, XCB_ATOM_STRING, 0, 64);
+    cookie = xcb_get_property(conn, 0, window, atom, XCB_ATOM_STRING, 0, 64);
     reply = xcb_get_property_reply(conn, cookie, NULL);
     if (!reply) {
         return NULL;
     }
-    char *name = (char *)xcb_get_property_value(reply);
+    int length = xcb_get_property_value_length(reply);
+    char *value = malloc(length + 1);
+    value[length] = '\0';
+    memcpy(value, xcb_get_property_value(reply), length);
     free(reply);
-    return name;
+    return value;
 }
 
 
@@ -53,17 +72,33 @@ int main() {
         die("cannot find focused window");
     }
 
-    char *name = get_window_property(conn, window, XCB_ATOM_WM_NAME);
-    if (!name) {
-        die("cannot read window name");
+    char *name;
+    char *class;
+    char *classname;
+
+    xcb_atom_t atom_wm_name;
+    atom_wm_name = get_atom(conn, "_NET_WM_NAME");
+    if (!atom_wm_name) {
+        die("cannot get _NET_WM_NAME atom");
+    }
+    name = get_window_property(conn, window, atom_wm_name);
+    if (!name || strlen(name) == 0) {
+        atom_wm_name = get_atom(conn, "WM_NAME");
+        if (!atom_wm_name) {
+            die("cannot get WM_NAME atom");
+        }
+        name = get_window_property(conn, window, atom_wm_name);
+        if (!name) {
+            die("cannot read window name");
+        }
     }
 
-    char *class = get_window_property(conn, window, XCB_ATOM_WM_CLASS);
+    class = get_window_property(conn, window, XCB_ATOM_WM_CLASS);
     if (!class) {
         die("cannot read window class");
     }
 
-    char *classname = strchr(class, '\0');
+    classname = strchr(class, '\0');
     if (!classname) {
         die("cannot find classname");
     }
@@ -73,4 +108,6 @@ int main() {
         "id: %u\nname: %s\nclass: %s\nclassname: %s\n",
         window, name, class, classname
     );
+
+    xcb_disconnect(conn);
 }
