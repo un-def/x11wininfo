@@ -13,6 +13,13 @@ void die(char *message) {
 }
 
 
+void die_atom_error(char *atom) {
+    char error[64];
+    sprintf(error, "cannot get %s atom", atom);
+    die(error);
+}
+
+
 xcb_window_t get_focused_window(xcb_connection_t *conn) {
     xcb_window_t focused;
     xcb_get_input_focus_cookie_t cookie;
@@ -43,15 +50,26 @@ xcb_atom_t get_atom(xcb_connection_t *conn, char *name) {
 }
 
 
-char *get_window_property(xcb_connection_t *conn, xcb_window_t window, xcb_atom_t atom) {
+char *get_window_property(xcb_connection_t *conn, xcb_window_t window, char *property, char *type, uint8_t empty_to_null) {
+    xcb_atom_t property_atom = get_atom(conn, property);
+    if (!property_atom) {
+        die_atom_error(property);
+    }
+    xcb_atom_t type_atom = get_atom(conn, type);
+    if (!type_atom) {
+        die_atom_error(type);
+    }
     xcb_get_property_cookie_t cookie;
     xcb_get_property_reply_t *reply;
-    cookie = xcb_get_property(conn, 0, window, atom, XCB_ATOM_STRING, 0, 64);
+    cookie = xcb_get_property(conn, 0, window, property_atom, type_atom, 0, 64);
     reply = xcb_get_property_reply(conn, cookie, NULL);
     if (!reply) {
         return NULL;
     }
     int length = xcb_get_property_value_length(reply);
+    if (length == 0 && empty_to_null) {
+        return NULL;
+    }
     char *value = malloc(length + 1);
     value[length] = '\0';
     memcpy(value, xcb_get_property_value(reply), length);
@@ -73,40 +91,31 @@ int main() {
     }
 
     char *name;
-    char *class;
-    char *classname;
-
-    xcb_atom_t atom_wm_name;
-    atom_wm_name = get_atom(conn, "_NET_WM_NAME");
-    if (!atom_wm_name) {
-        die("cannot get _NET_WM_NAME atom");
+    name = get_window_property(conn, window, "_NET_WM_NAME", "UTF8_STRING", 1);
+    if (!name) {
+        name = get_window_property(conn, window, "WM_NAME", "UTF8_STRING", 1);
     }
-    name = get_window_property(conn, window, atom_wm_name);
-    if (!name || strlen(name) == 0) {
-        atom_wm_name = get_atom(conn, "WM_NAME");
-        if (!atom_wm_name) {
-            die("cannot get WM_NAME atom");
-        }
-        name = get_window_property(conn, window, atom_wm_name);
-        if (!name) {
-            die("cannot read window name");
-        }
+    if (!name) {
+        name = get_window_property(conn, window, "WM_NAME", "STRING", 0);
+    }
+    if (!name) {
+        name = "";
     }
 
-    class = get_window_property(conn, window, XCB_ATOM_WM_CLASS);
-    if (!class) {
+    char *raw_class = get_window_property(conn, window, "WM_CLASS", "STRING", 0);
+    if (!raw_class) {
         die("cannot read window class");
     }
-
-    classname = strchr(class, '\0');
-    if (!classname) {
-        die("cannot find classname");
+    char *instance = raw_class;
+    char *class = strchr(raw_class, '\0');
+    if (!class) {
+        die("cannot find class");
     }
-    classname++;
+    class++;
 
     printf(
-        "id: %u\nname: %s\nclass: %s\nclassname: %s\n",
-        window, name, class, classname
+        "id: %u\nname: %s\ninstance: %s\nclass: %s\n",
+        window, name, instance, class
     );
 
     xcb_disconnect(conn);
