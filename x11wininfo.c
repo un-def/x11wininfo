@@ -9,6 +9,10 @@
 #include <xcb/xproto.h>
 
 
+#define _NAME "x11wininfo"
+#define _VERSION "0.1.0"
+
+
 static char *modes[] = {
     "text",
     "mintext",
@@ -104,13 +108,13 @@ get_mode_from_argv(int argc, char **argv) {
 
     char *mode = modes[0];
     int option = 0;
-    while ((option = getopt(argc, argv, ":m:h")) != -1) {
+    while ((option = getopt(argc, argv, ":m:hv")) != -1) {
         switch (option) {
             case 'm':
                 mode = optarg;
                 break;
             case 'h':
-                printf("usage: %s [-m MODE]\n\nmodes:\n", argv[0]);
+                printf("usage: " _NAME " [-m MODE]\n\nmodes:\n");
                 for (int i = 0; i < modes_count; i++) {
                     if (i == 0) {
                         printf("\t%s\t(default)\n", modes[i]);
@@ -120,6 +124,9 @@ get_mode_from_argv(int argc, char **argv) {
 
                     }
                 }
+                exit(0);
+            case 'v':
+                printf(_NAME " version " _VERSION "\n");
                 exit(0);
             case ':':
                 die("no option value: %c", optopt);
