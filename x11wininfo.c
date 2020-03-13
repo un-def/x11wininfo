@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,6 +7,14 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_atom.h>
 #include <xcb/xproto.h>
+
+
+static char *modes[] = {
+    "text",
+    "mintext",
+    "json",
+};
+static int modes_count = sizeof(modes) / sizeof(char *);
 
 
 void
@@ -88,8 +97,52 @@ get_window_string_property(xcb_connection_t *conn, xcb_window_t window, char *pr
 }
 
 
+char *
+get_mode_from_argv(int argc, char **argv) {
+    extern char *optarg;
+    extern int optopt;
+
+    char *mode = modes[0];
+    int option = 0;
+    while ((option = getopt(argc, argv, ":m:h")) != -1) {
+        switch (option) {
+            case 'm':
+                mode = optarg;
+                break;
+            case 'h':
+                printf("usage: %s [-m MODE]\n\nmodes:\n", argv[0]);
+                for (int i = 0; i < modes_count; i++) {
+                    if (i == 0) {
+                        printf("\t%s\t(default)\n", modes[i]);
+                    }
+                    else {
+                       printf("\t%s\n", modes[i]);
+
+                    }
+                }
+                exit(0);
+            case ':':
+                die("no option value: %c", optopt);
+            case '?':
+                die("unknown option: %c", optopt);
+            default:
+                die("unexpected error while parsing options");
+        }
+    }
+    for (int i = 0; i < modes_count; i++) {
+        if (strcmp(mode, modes[i]) == 0) {
+            return mode;
+        }
+    }
+    die("unsupported mode: %s", mode);
+    return mode;
+}
+
+
 int
-main() {
+main(int argc, char **argv) {
+    char *mode = get_mode_from_argv(argc, argv);
+
     xcb_connection_t *conn = xcb_connect(NULL, NULL);
     if (xcb_connection_has_error(conn)) {
         xcb_disconnect(conn);
@@ -98,11 +151,13 @@ main() {
 
     xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
     if (!screen) {
+        xcb_disconnect(conn);
         die("cannot get screen");
     }
 
     xcb_window_t window = get_focused_window(conn, screen->root);
     if (!window) {
+        xcb_disconnect(conn);
         die("cannot find focused window");
     }
 
@@ -120,19 +175,32 @@ main() {
 
     char *raw_class = get_window_string_property(conn, window, "WM_CLASS", "STRING", 0);
     if (!raw_class) {
+        xcb_disconnect(conn);
         die("cannot read window class");
     }
     char *instance = raw_class;
     char *class = strchr(raw_class, '\0');
     if (!class) {
+        xcb_disconnect(conn);
         die("cannot find class");
     }
     class++;
 
-    printf(
-        "id: %u\nname: %s\ninstance: %s\nclass: %s\n",
-        window, name, instance, class
-    );
-
+    if (strcmp(mode, "json") == 0) {
+        printf(
+            "{\"id\": \"%u\", \"name\": \"%s\", "
+            "\"instance\": \"%s\", \"class\": \"%s\"}\n",
+            window, name, instance, class
+        );
+    } else if (strcmp(mode, "mintext") == 0) {
+        printf("%u\n%s\n%s\n%s\n", window, name, instance, class);
+    } else {
+        printf(
+            "id: %u\nname: %s\ninstance: %s\nclass: %s\n",
+            window, name, instance, class
+        );
+    }
+    free(name);
+    free(raw_class);
     xcb_disconnect(conn);
 }
