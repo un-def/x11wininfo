@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,17 +9,14 @@
 
 
 void
-die(char *message) {
-    fprintf(stderr, "ERROR: %s\n", message);
+die(char *message, ...) {
+    fprintf(stderr, "ERROR: ");
+    va_list argptr;
+    va_start(argptr, message);
+    vfprintf(stderr, message, argptr);
+    va_end(argptr);
+    fprintf(stderr, "\n");
     exit(1);
-}
-
-
-void
-die_atom_error(char *atom) {
-    char error[64];
-    sprintf(error, "cannot get %s atom", atom);
-    die(error);
 }
 
 
@@ -42,11 +40,11 @@ xcb_get_property_reply_t *
 get_window_property_reply(xcb_connection_t *conn, xcb_window_t window, char *property, char *type) {
     xcb_atom_t property_atom = get_atom(conn, property);
     if (!property_atom) {
-        die_atom_error(property);
+        die("cannot get %s property atom", property);
     }
     xcb_atom_t type_atom = get_atom(conn, type);
     if (!type_atom) {
-        die_atom_error(type);
+        die("cannot get %s type atom", type);
     }
     xcb_get_property_cookie_t cookie;
     xcb_get_property_reply_t *reply;
