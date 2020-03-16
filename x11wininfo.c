@@ -5,8 +5,6 @@
 #include <string.h>
 
 #include <xcb/xcb.h>
-#include <xcb/xcb_atom.h>
-#include <xcb/xproto.h>
 
 
 #define _NAME "x11wininfo"
